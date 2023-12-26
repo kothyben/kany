@@ -1,0 +1,14 @@
+---
+- name: Zip a folder on Windows
+  hosts: windows
+  gather_facts: false
+
+  tasks:
+    - name: Zip the folder
+      win_shell: |
+        $sourceFolder = '{{ destination_directory }}'  # Replace with the actual path to the folder you want to zip.
+        $destinationZip = '{{ zip_directory }}\archive.zip'  # Replace with the desired path and name of the output ZIP archive.
+
+        Compress-Archive -Path $sourceFolder -DestinationPath $destinationZip
+      become: true
+

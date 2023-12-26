@@ -1,0 +1,15 @@
+---
+- name: "Connection with windows nodes"
+  hosts: all
+  become: false
+  gather_facts: False
+  tasks:
+    - name: "ping windows machines"
+      win_ping:
+      when: ("windows" in group_names)
+
+    - name: "ping local nodes"
+      action: ping
+      when: ("linux" in group_names)
+      
+

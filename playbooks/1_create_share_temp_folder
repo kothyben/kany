@@ -1,0 +1,39 @@
+- name: CREATE SHARED FOLDERS AND FILES ON WINDOWS NODES
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE TEMP DIRECTORY ON WINDOWS NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ destination_directory }}temp_folder"
+        state: directory
+      when: "'windows' in group_names  "
+
+    - name: SHARE TEMP FILDER CREATED
+      win_share:
+        path: "{{ destination_directory }}temp_folder"
+        name: SharingTempFolder
+        full_access: Everyone
+        list: True
+        permissions: "read=True,change=True"
+      when: "'windows' in group_names  "
+    
+
+    - name: CHECK IF FOLDER IS SHARED
+      block:
+        - name: Sharing Parameters
+          win_shell: |
+            net share SharingTempFolder
+          register: shared_folder_info
+        - debug:
+            msg : "{{ shared_folder_info.stdout }}"
+      when: "'windows' in group_names  "

@@ -1,0 +1,80 @@
+---
+- name: FICHIERS CONFIG ET IMPORTANTS A COPIER + SYNCHRONISATION DIRECTE AVEC LES MACHINES DE DESTINATION
+  hosts: all
+  gather_facts: False
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: DELETE OLD COPIES INTO TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - copy_editique_moins.exe
+
+    - name: COPYING EDITIQUE  FOLDERS STR SERVICES EDITIQUES INTO SOURCE HOST
+      win_command: ".\\copy_editique_moins.exe "
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+    - name: CREATE PS1 TEMPLATE FOR ROBOCOPYS TO DESTINATION SERVERS
+      template:
+        src: ../templates/editique_robocopy.j2
+        dest: editique_Robocopy_Folders.ps1
+      when: " 'linux' in group_names"
+
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src: editique_Robocopy_Folders.ps1
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - name: TRANSFERT EDITIQUE FOLDERS FROM SOURCE TO DESTINATION HOST
+      win_command: powershell ".\\editique_Robocopy_Folders.ps1"
+      args:
+         chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - win_shell: |
+          $folder_synchronized = Get-ChildItem "{{ str_services_path }}*"
+          $folder_synchronized
+      register: folderSynchronized
+      when: "'windows' in group_names and inventory_hostname != source_host "
+    - name: SEE FOLDERS EDITIQUES COPIED
+      debug:
+         var: folderSynchronized.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE PS1 FILES ON LOCAL NODE
+      file:
+        path:  "editique_Robocopy_Folders.ps1"
+        state: absent
+      when: "'linux' in group_names "
+  
+    - name: DELETE PS1  POWERSHELL SCRIPT ON DESTINATION HOSTS
+      win_shell: "Remove-Item -Path editique_Robocopy_Folders.ps1"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: DELETE EXE FILES
+      win_shell: "Remove-Item -Path copy_editique_moins.exe"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+    
+ 
+    - name: DELETE FILES COPIED INTO  TEMP FOLDER ON  SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host " 

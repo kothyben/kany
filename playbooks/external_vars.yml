@@ -1,0 +1,31 @@
+---
+dir_windows: "C:\\Users\\Administrator\\Desktop\\Streamserve_Jenkins\\"
+workspace: "/home/akoki/Streamserve_MigrationFolfers/"
+
+pilotes_dir: "C:\\Windows\\System32\\DriverStore\\FileRepository\\"
+
+global_temp_folder: "C:\\Users\\{{ ansible_user }}\\Desktop\\temp_folder\\"
+
+#Source servers
+source_directory: "E:\\Testdrivers\\"
+source_host: "STR-MUT-TEST2"
+folder_share: "\\{{ source_host }}\\Users\\{{ hostvars[source_host]['ansible_user'] }}\\Desktop\\temp_folder"
+folder_final: "{% if folder_share.startswith('\\\\') %}C:\\\\{{ folder_share[1 + source_host | length:] }}{% else %}{{ folder_share }}{% endif %}"
+editique_share: "\\{{ source_host }}\\str_services"
+
+
+#Destination servers
+destination_host: "STR-APP-MUT-TST"
+unc_dest_server: "\\{{ destination_host }}\\Users\\{{ hostvars[destination_host]['ansible_user'] }}\\Desktop\\temp_folder"
+shared_dest_dir: "{% if unc_dest_server.startswith('\\\\') %}C:\\\\{{ unc_dest_server[1 + destination_host | length:] }}{% else %}{{ unc_dest_server }}{% endif %}"
+destination_directory: "C:\\Users\\{{ ansible_user }}\\Desktop\\"
+
+dest_dir: "{% if unc_dest_server.startswith('\\\\') %}C:{{ unc_dest_server[1 + destination_host | length:] }}{% else %}{{ unc_dest_server }}{% endif %}"
+backup_folder: "backup_folders_test"
+#editique_destination_shared:  "\\{{ destination_host }}\\str_services"
+
+
+#StreameServe Paths
+str_services_path: "E:\\STR_SERVICES\\"
+str_drivers_paths: "E:\\BAT\\add-printers-script-driver\\"
+str_path_fic_param: "E:\\BAT\\FIC_PARAM\\"

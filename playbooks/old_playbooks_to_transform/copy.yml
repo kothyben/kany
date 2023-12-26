@@ -1,0 +1,22 @@
+---
+- name: "COPY EXE AND CREATE PS1 FILES INTO windows"
+  hosts: all
+  gather_facts: False
+  become: true
+  become_method: runas
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+  
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: "copy exe files on windows nodes"
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ dir_windows }}"
+      when: ("windows" in group_names)
+      loop:
+        - "{{ copy_files }}"
+    

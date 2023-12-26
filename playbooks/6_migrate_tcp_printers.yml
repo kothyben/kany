@@ -1,0 +1,106 @@
+---
+- name: MIGRATE PRINTERS AND CONFIGURATIONS FROM SOURCE TO DESTINATION USING PRINTBRM TOOLS
+  hosts: all
+  gather_facts: True
+  become_method: ansible.builtin.runas
+  vars:
+    ansible_become_user: "{{ ansible_user }}"
+    ansible_become_pass: "{{ ansible_password }}"
+    win_exe_dir: "C:\\WINDOWS\\System32\\spool\\tools\\"
+  
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: BACKUP PRINTERS AND CONFIGURATIONS FROM SOURCE HOST INTO FILE
+      win_command: |
+        {{ win_exe_dir }}PrintBrm.exe -b -s {{ ansible_hostname }} -f {{ global_temp_folder }}printersMigrated.printerExport
+      when: "'windows' in group_names and inventory_hostname == source_host"
+      register: backup_result
+
+    - name: DISPLAY PROGRESS DURING WAITING
+      block:
+        - debug:
+            msg: "Waiting for the backup file to be created..."
+          when: backup_result is succeeded and inventory_hostname == source_host
+
+        - name: Wait for the backup file to be created
+          win_stat:
+            path: "{{ global_temp_folder }}printersMigrated.printerExport"
+          register: backup_file_stat
+          retries: 60  # Ajustez selon le temps nécessaire pour que le fichier soit créé
+          delay: 5  # Intervalle de vérification (en secondes)
+          until: backup_file_stat.stat.exists
+          when: inventory_hostname == source_host
+
+        - name: Display final status
+          debug:
+            msg: "Backup file created successfully! {{ backup_file_stat.stat.filename }}"
+          when: backup_result is succeeded and backup_file_stat is defined and inventory_hostname == source_host
+  
+    - name: TRANSFERT printersMigrated.printerExport FILES TO DESTINATION NODES
+      block:
+        - name: Create template tcp printer script to copying it
+          template:
+            src: ../templates/tcp_printers.j2
+            dest: tcp_printers_robocopy.ps1
+            mode: 0777
+          when: " 'linux' in group_names "
+
+        - name: Copy ps1 created from local to target windows servers
+          win_copy:
+            src: tcp_printers_robocopy.ps1
+            dest: "{{ destination_directory }}"
+          when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+        - name: Execute Tranfering printersMigrated.printerExport
+          win_shell: " .\\tcp_printers_robocopy.ps1"
+          args:
+            chdir: "{{ destination_directory }}"
+          when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: RESTORE PRINTERS ON DESTINATION HOST TAKEN FROM SOURCE hosts
+      win_command: |
+        {{ win_exe_dir }}PrintBrm.exe -r -s {{ ansible_hostname }}  -f {{ global_temp_folder }}printersMigrated.printerExport
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      register: printersrestored_log
+
+    - name: SEE FAILED ADDED PRINTERS
+      block:
+        - name: Extract content starting from "The following objects failed to install:"
+          set_fact:
+            start_index: "{{ printersrestored_log.stdout_lines.index('The following objects failed to install:') | default(-1) }}"
+
+        - name: Display content failed  onwards
+          debug:
+            msg: "{{ printersrestored_log.stdout_lines[start_index | int:] }}"
+      when: " 'windows' in group_names and inventory_hostname != source_host "
+
+
+    - name: DELETE UNUSED FILES
+      block:
+        - name: Delete files unused on local controller
+          file:
+            path: "{{ item }}"
+            state: absent
+          when: "'linux' in group_names"
+          loop:
+            - /tcp_printers_robocopyps.ps1
+
+        - name: Delete files unused on windows machines
+          win_file:
+            path: "{{ destination_directory }}{{ item }}"
+            state: absent
+          when: "'windows' in group_names and inventory_hostname != source_host "
+          loop:
+            - .\\tcp_printers_robocopyps.ps1
+
+         
+
+          
+
+          
+
+
+

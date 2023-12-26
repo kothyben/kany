@@ -1,0 +1,59 @@
+---
+- name: CREATE DIRECTORY FOR AUTOMATE SREAMSERVE INTO DESTINATION WINDOWS MACHINE
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./streamservice_vars.yml
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE  DRIVERS DIRECTORY ON WINDOWS DESTINATION NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ str_drivers_paths }}"
+        state: directory
+      when: "'windows' in group_names   and inventory_hostname != source_host "
+
+    - name: CREATE  STR SERVICE DIRECTORY ON WINDOWS DESTINATION NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ str_services_path }}"
+        state: directory
+      when: "'windows' in group_names   and inventory_hostname != source_host "
+    
+    - win_shell: |
+        Get-ChildItem -Path "{{ dest_dir }}" -Filter "editique_*" -Recurse -ErrorAction SilentlyContinue
+      register: editique_items
+      when: "'windows' in group_names and inventory_hostname != source_host"
+    - debug:
+        var: editique_items.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: COPY EDITIQUE DIRECTORIES FROM  SHARED TEMP  FOLDER TO STR_SERVICES DIRECTORY
+      win_shell: |
+        Get-ChildItem -Path "{{ dest_dir }}" -Filter "editique_*"  -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination "{{ str_services_path }}" -Recurse -ErrorAction SilentlyContinue
+         }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      
+    - name: DELETE EDITIQUE DIRECTORIES FROM SHARED TEMPD FOLDER
+      win_shell: |
+        Remove-Item -Path "{{ dest_dir }}\editique_*" -Recurse -Force -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname != source_host"
+ 
+    - win_shell: |
+        $list_folders = Get-ChildItem "{{ str_services_path }}"
+        $list_folders
+      register: list_folders
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: LIST OF EDITIQUE FOLDERS COPIED INTO STR_SERVCIES DIRECTORY
+      debug:
+        var: list_folders.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host"

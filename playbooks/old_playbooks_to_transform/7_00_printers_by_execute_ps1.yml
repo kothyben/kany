@@ -1,0 +1,67 @@
+---
+- name: CREATE AND INSTALL PRINTERS WITH REMOTE TCP/IP
+  hosts: all
+  gather_facts: false
+  become: False
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: Get printer models list
+      win_shell: |
+        Get-ChildItem -Path "{{ str_drivers_paths }}" -Directory | Select-Object -ExpandProperty Name
+      register: printer_models
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: SET FACTS PRINTERS MODEL
+      set_fact:
+        printerModel: "{{ printer_models.stdout_lines }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DISPLAY PRINTERS MODELS
+      debug:
+        var: printerModel
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DISPLAY PS1 FILES INSTALL INTO EACH PRINTER MODEL FOLDERS
+      win_shell: |
+        $chemin = "{{ str_drivers_paths }}"
+        $printerModels = "{{ printerModel }}"
+
+        foreach ($printer in $printerModels) {
+          $printerPath = Join-Path -Path $chemin -ChildPath $printer
+          $ps1Files = Get-ChildItem -Path $printerPath -Filter "*.ps1" -File
+          $ps1Files
+        }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      register: ps1Files
+
+    - debug:
+        msg: "{{ ps1Files.stdout_lines }} "
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: COPY EXE FILE TO INSTALL REMOTE PRINTERS 
+      win_copy :
+        src: ../Executabe_Files/install_remote_printers.exe
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: INSTALL PRINTERS BY EXECUTING EACH PS1 FILE INTO EACH PRINTER MODEL FOLDERS
+      win_command:  ".\\install_remote_printers.exe {{ str_drivers_paths }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      register: Installation_remote_printers
+
+    - name: DISPLAY PS1 FILES RUNNED TO INSTALL REMOTE PRINTERS
+      debug:
+        msg: "{{ item }}"
+      loop: "{{ Installation_remote_printers.stdout_lines }}"
+      when: "'windows' in group_names and inventory_hostname != source_host and '.ps1' in item"
+
+    - name: DELETE EXE FILES 
+      win_shell: "Remove-Item -Path install_remote_printers.exe"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"

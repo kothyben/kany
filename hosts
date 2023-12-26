@@ -1,0 +1,23 @@
+[windows]
+STR-MUT-TEST2  ansible_host=192.168.141.64 ansible_user=Administrator   
+STR-APP-MUT-TST ansible_host=192.168.141.80 ansible_user=admin  ansible_port=5985
+
+#WINDOWS_MACHINE_LOCAL  ansible_host=172.23.1.200   ansible_user=adl_akoki 
+#WINDOWS_MACHINE_LOCAL  ansible_host=172.23.5.18  ansible_user=adl_akoki
+
+
+[windows:vars]
+ansible_connection=winrm
+ansible_winrm_server_cert_validation=ignore
+ansible_winrm_transport=basic
+ansible_port=5986
+
+
+[linux]
+jenkinsPro ansible_connection=local ansible_user=akoki 
+INF-DEP-TST  ansible_connection=ssh ansible_user=akoki  ansible_host=192.168.139.66
+#jenkinsPro ansible_connection=local ansible_user=akoki.centOS
+
+#[partage]
+#globalshare   ansible_host=192.168.29.1 
+

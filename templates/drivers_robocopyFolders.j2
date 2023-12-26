@@ -1,0 +1,6 @@
+$password = "{{ hostvars[source_host]['ansible_password'] }}"
+net use Z: "\{{ folder_share }}" /user:Administrator $password
+$login = $env:USERNAME
+robocopy Z:\ "{{ str_drivers_paths }}" /E
+net use Z: /delete
+

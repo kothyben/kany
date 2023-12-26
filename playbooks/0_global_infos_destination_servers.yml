@@ -1,0 +1,64 @@
+---
+- name: "INFORMATIONS GLOBALES DES MACHINES ET FICHIERS CONFIG ET IMPORTANTS A COPIER"
+  hosts: windows
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  
+  vars_files:
+        - ./external_vars.yml
+
+  tasks:
+    - name:  COPY SCRIPTS EXE ABOUT COMPUTER INFOS CONFIG_FILES AND IMPORTANT FOLDERS TO COPY
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      loop:
+        - script_InfosGlobales.exe
+        - script_printers_driverPaths.exe
+      when: "'windows' in group_names and inventory_hostname != source_host"
+    
+    - name: RUN EXE SCRIPTS INFO GLOBALES  ABOUT  SERVERS
+      win_command: "{{ item }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      loop:
+        - script_InfosGlobales.exe
+        - script_printers_driverPaths.exe
+      register: globalinfos_output
+      ignore_errors: True
+      when: "'windows' in group_names and inventory_hostname !=  source_host"
+
+    - win_find:
+        paths: "{{ destination_directory }}"
+        patterns: "*.csv"
+      register: output_files
+    - name: SEE GLOBAL INFOS  OUTPUT FILES  ON  WINDOWS
+      debug:
+        var: list_output_files_scripts
+      vars:
+        list_output_files_scripts: "{{ output_files.files | map(attribute='filename') | list }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host"
+
+
+    - win_shell: |
+        $csvContent = Get-Content '{{ destination_directory }}informations_globales.csv'
+        $csvContent
+      register: csv_data_output
+      when: "'windows' in group_names and inventory_hostname !=  source_host"
+
+    - name: READ GLOBAL INFORMATIONS ABOUT WINDOWS  NODES 
+      debug:
+        var: csv_data_output.stdout_lines
+      when: "'windows' in group_names and inventory_hostname !=  source_host"
+   
+    - name: DELETE ALL EXE FILES INTO WINDOWS MACHINES
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}*.exe" -Force
+      when: "'windows' in group_names and inventory_hostname !=  source_host"
+  
+

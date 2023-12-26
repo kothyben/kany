@@ -1,0 +1,132 @@
+---
+- name: COPY PILOTES DRIVERS REPOSIROTY WITH .INF FILES
+  hosts: all
+  gather_facts: False
+  become_method: runas
+  vars:
+        ansible_besome_user: "{{ ansible_user }}"
+        ansible_become_password: "{{ ansible_password }}"
+
+  vars_files:
+        - ./external_vars.yml
+
+  tasks:
+    - name: CREATE PILOTES DIRECTORY ON DESTINATION HOSTS IF NOT EXISTS
+      win_file:
+        path: "{{ pilotes_dir }}"
+        state: directory
+        mode: 0777
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - win_shell: |
+        $existingFoldersCount = (Get-ChildItem -Path "{{ pilotes_dir }}" -Directory).Count
+        Write-Host "Nombre de dossiers existants : $existingFoldersCount"
+        
+        get-childItem -path "{{ pilotes_dir }}" -ErrorAction SilentlyContinue
+      when: "'windows' in group_names "
+      register: pilotes_directories
+    - name: SEE CONTAINS OF PILOTES DIRECTORY
+      debug:
+        var: pilotes_directories.stdout_lines
+      when: "'windows' in group_names "
+      
+    - name: DELETE OLD COPIED FOLDERS  INTO TEMP FOLDER
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names "
+    
+    - name: COPY EXE FILE TO COPY CONFIG FILES FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - config_files_pimp.exe
+
+    - name: COPYING 'DriverStore\FileRepository' DIRECTORIES  INTO SOURCE HOST ON TEMP FOLDER
+      win_command: ".\\config_files_pimp.exe {{ pilotes_dir }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+   
+
+    - name: CREATE TEMPLATE ON LOCAL CONTROLLER NODE  FOR PILOTES DRIVERS 
+      template:
+        src: ../templates/pilotes_robocopyFolders.j2
+        dest: pilotes_robocopyFolders.ps1
+        mode: 0755
+      when: " 'linux' in group_names "
+
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src:  "pilotes_robocopyFolders.ps1"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - name: TRANFERING  PILOTES  FOLDERS FROM SOURCE TO DESTINATION HOST INTO TEMP FOLDER
+      win_shell: ".\\pilotes_robocopyFolders.ps1"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: COPY PILOTES  DIRECTORIES FROM  SHARED TEMP  FOLDER TO 'DriverStore\FileRepository' ON DESTINATION HOST
+      win_shell: |
+        Get-ChildItem -Path "{{ dest_dir }}" -ErrorAction SilentlyContinue | ForEach-Object {
+        Copy-Item -Path $_.FullName -Destination "{{ pilotes_dir }}" -Recurse -ErrorAction SilentlyContinue
+         }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: CHECK FOLDERS COPIED
+      win_shell: |
+        $dateToday = Get-Date -Format "yyyy-MM-dd"
+        $dossiers_copied = (Get-ChildItem -Directory | Where-Object { $_.CreationTime.Date -eq $dateToday }).Count
+        Write-Host "Nombre de dossiers copies : $dossiers_copied"
+
+        Get-ChildItem -Directory -Recurse | Where-Object { $_.CreationTime.Date -eq $dateToday }
+      args:
+        chdir: "{{ pilotes_dir }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: INSTALL PILOTES PRINTERS FROM .INF FILES INTO 'DriverStore\FileRepository'
+      block: 
+        - name: "Copy 'python install_pilotes.py' on destination host"
+          win_copy: 
+            src:  "../Python_files/install_pilotes.py"
+            dest: "{{ destination_directory }}"
+
+        - name: Install pilotes from .inf files 
+          win_shell: ".\\install_pilotes.py '{{ pilotes_dir }}'"
+          args:
+            chdir: "{{ destination_directory}}"
+
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      
+    - name: DELETE FILES
+      block:
+        - name: Remove files from destination hosts
+          win_shell: "Remove-Item -Path {{ item }}"
+          args:
+            chdir: "{{ destination_directory }}"
+          loop:
+            - pilotes_robocopyFolders.ps1
+            - install_pilotes.py
+          when: "'windows' in group_names and inventory_hostname != source_host"
+  
+        - name: DELETE ps1 files on local controller
+          file:
+            path: pilotes_robocopyFolders.ps1
+            state: absent
+          when: " 'linux' in group_names "
+
+        - name: Delete exe file on source host
+          win_shell: "Remove-Item -Path {{ item }}"
+          args:
+                chdir: "{{ destination_directory }}"
+          loop:
+            - Copy_Log.csv
+            - config_files_pimp.exe
+          when: "'windows' in group_names and inventory_hostname == source_host"
+
+        - name: DELETE OLD COPIED FOLDERS  INTO TEMP FOLDER
+          win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+          when: "'windows' in group_names "
+

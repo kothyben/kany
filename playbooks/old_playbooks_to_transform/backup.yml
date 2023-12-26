@@ -1,0 +1,52 @@
+- name: CREATE SHARED FOLDERS AND FILES ON WINDOWS NODES
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE BACKUP TEMP DIRECTORY ON WINDOWS NODES IF NOT EXISTS
+      win_file:
+        path: "{{ destination_directory }}{{ backup_folder }}"
+        state: directory
+      when: "'windows' in group_names  "
+
+    - name: COPY SCRIPT_SHARE.EXE FILE ON WINDOWS NODES
+      win_copy:
+        src: "../Executabe_Files/share_folders_copy.exe"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names  "
+
+    - name: SHARE BACKUP TEMP FOLDER BY EXECUTING SHARE.EXE FILE
+      win_command: |
+        .\\share_folders_copy.exe --name_backup_temp_folder "{{ backup_folder }}""
+      args:
+        chdir: "{{ destination_directory }}"
+      register: script_output
+      ignore_errors: True
+      when: "'windows' in group_names"
+
+    - name: SEE SCRIPT OUTPUT ON DESTINATION WINDOWS MACHINE
+      debug:
+        msg: "{{ script_output.stdout_lines }}"
+      when: "'windows' in group_names and inventory_hostname == destination_host"
+
+    - win_find:
+        paths: "{{ destination_directory }}"
+        patterns: "*.csv"
+      register: output_files
+      when: "'windows' in group_names and inventory_hostname == destination_host"
+
+    - name: SEE OUTPUT FILES OF .EXE SCRIPTS ON DESTINTION WINDOWS
+      debug:
+        var: list_output_files_scripts
+      vars:
+        list_output_files_scripts: "{{ output_files.files | map(attribute='filename') | list }}"
+      when: "'windows' in group_names and inventory_hostname == destination_host"

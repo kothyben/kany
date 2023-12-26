@@ -1,0 +1,80 @@
+---
+- name: SELECT IMPORTANT FOLDERS AND FILES  - SHARED FOLDERS - PULL FODLERS AND FILES TO WINDOWS
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    
+
+    # ----------------------------- COPY ONE FILE FROM WINDOWS TO LINUX 
+    
+    - name:  SEE IMPORTANT FOLDERS OR  FILES  TO COPY
+      win_shell: |
+        chdir '{{ source_directory }}'
+        dir
+      register: folders_to_copy
+      when: "'windows' in group_names and inventory_hostname == source_host "
+    - debug:
+        msg: "{{ folders_to_copy.stdout_lines}}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY IMPORTANT FOLDERS  TO SHARED TEMP DIRECTPRY
+      win_copy:
+        src: '{{ source_directory }}'
+        dest: "{{ folder_final }}"
+        remote_src: yes
+      when: "'windows' in group_names and inventory_hostname == source_host "
+   
+    - name: FIND ALL FILES INTO SHARED DIRECTORY ON SOURCE Windows NODE
+      win_find:
+        paths: '{{ folder_final }}'
+        file_type: file
+      register: found_files
+      when: inventory_hostname == source_host
+    - debug:
+        var: filenames_list
+      vars:
+        filenames_list: "{{ found_files.files | map(attribute='filename') | list }}"
+      when: inventory_hostname == source_host
+
+    - name: CREATE DIRECTORY INTO LOCAL CONTROLLER NODE
+      file:
+        state: directory
+        mode: 0777
+        path: "{{ workspace }}/dossiers_tmp_from_windows"
+      when: "'linux' in group_names "
+
+    - name: FETCH  FILES FROM WINDOWS TO LOCAL LINUX ONLY FILES 
+      vars:
+        filenames_list: "{{ found_files.files | map(attribute='filename') | list }}"
+      fetch:
+        src: "{{ destination_directory }}temp_folder\\{{ item }}"
+        dest: "{{ workspace }}/dossiers_tmp_from_windows/"
+        flat: yes
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop: "{{ filenames_list }}"
+
+
+    #--------------------------- COPY MULTIPLE FILES FROM WINDOWS MANAGED NODES WITH ALL PATH DIRECTPRY 
+
+    - name: Fetch files from the Windows host into local controller
+      fetch:
+        src: '{{ item.path }}'
+        dest: '{{ workspace }}/dossiers_tmp_from_windows/{{ item.path | basename }}'
+      #delegate_to: localhost
+      loop: '{{ found_files.files }}'
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+          
+      
+
+

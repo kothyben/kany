@@ -1,0 +1,65 @@
+---
+- name : CHECK MODIFICATION OCCURED ON DUX FILES
+  hosts: all 
+  gather_facts: false
+  become_method: runas
+
+  vars:
+    ansible_become_user : "{{ ansible_user }}"
+    ansible_becomme_password: "{{ ansible_password }}"
+
+  vars_files:
+    - ./external_vars.yml
+    
+  tasks:
+    - name: COPY GLOBAL STREAMSERVE EXE FILE  FROM LOCAL LINUX  TO WINDOWS NODES
+      win_copy:
+        src: ../Python_files/dux_treatment.py
+        dest: "{{ destination_directory }}"
+      when: " 'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: RUN PYTHON FILE TO SEE GLOBAL INFO ABOUT STREAMSERVE SERVER 
+      win_shell:  python .\\dux_treatment.py
+      args:
+        chdir: "{{ destination_directory }}"  
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: SEE OUTPUT FILES
+      block:
+        - name: Get output files 
+          win_shell: |
+                ls | findstr ".csv"
+          args:
+            chdir: "{{ destination_directory }}"
+          register: outputFiles
+        - name: Display output of the command
+          debug:
+            var: outputFiles.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: DELET UNUSED FILES 
+      block:
+        - name: Delete Python file
+          win_shell: Remove-Item -path  "{{ destination_directory }}dux_treatment.py" -Force -ErrorAction SilentlyContinue
+
+        - name: Find csv files
+          win_find:
+            paths: "{{ destination_directory }}"
+            patterns: "*.csv"
+          register: csv_files
+
+        - name: Delete csv files
+          win_file:
+            path: "{{ item.path }}"
+            state: absent
+          with_items: "{{ csv_files.files }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+ 
+           
+            
+          
+      
+      
+    
+

@@ -1,0 +1,78 @@
+---
+- name: PULL SCRIPTS ADD PRINTERS DRIVERS FODLERS  TO WINDOWS 
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE  ADD PRINTERS SCRIPTS DRIVERS DIRECTORY ON WINDOWS DESTINATION NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ item }}"
+        state: directory
+      when: "'windows' in group_names   and inventory_hostname != source_host "
+      loop: 
+        - "{{ str_drivers_paths }}"
+
+    - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - config_files_pimp.exe
+
+    - name: DELETE OLD COPIED FOLDERS  INTO TEMP FOLDER
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names "
+
+    - name: COPYING 'ADD-PRINTERS-SCRIPTS-DRIVERS' DIRECTORIES  INTO SOURCE HOST ON TEMP FOLDER
+      win_command: ".\\config_files_pimp.exe {{ str_drivers_paths }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+    - name: CREATE POWERSHELL SCRIPT  TEMPLATE ON LOCAL CONTROLLER NODE
+      template:
+        src: ../templates/drivers_robocopyFolders.j2
+        dest: drivers_robocopyFolders.ps1
+        mode: 0755
+      when: " 'linux' in group_names "
+
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src: drivers_robocopyFolders.ps1
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - name: TRANFERING  DRIVERS FOLDERS FROM SOURCE TO DESTINATION
+      win_shell: ".\\drivers_robocopyFolders.ps1"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE ROBOCOPY POWERSHELL SCRIPT
+      win_shell: "Remove-Item -Path drivers_robocopyFolders.ps1"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+ 
+    - name: DELETE PS1 SCRIPT INTO LOCAL LINUX CONTROLLER
+      file:
+        path: drivers_robocopyFolders.ps1
+        state: absent
+      when: " 'linux' in group_names "
+
+    - name: DELETE EXE FILE
+      win_shell: "Remove-Item -Path config_files_pimp.exe"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"

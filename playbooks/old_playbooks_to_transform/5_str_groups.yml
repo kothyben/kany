@@ -1,0 +1,50 @@
+---
+- name: CREATE GROUPS STREAMSERVE ON REGISTRY WINDOWS 
+  hosts: windows
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+
+  vars_files: 
+    - ./external_vars.yml
+
+  tasks:
+    - name: COPY BATCH FILES INTO WINDOWS NODES 
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      loop:
+        - ../batch_files/str_Group_Create.bat
+        - ../batch_files/str_grouping_services.bat
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: CREATE GROUPS INTO REGISTRY WINDOWS
+      win_command: |
+        .\\str_Group_Create.bat
+      args:
+        executable: cmd
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: GROUPING SERVICES INTO STR GROUPS WINDOWS
+      win_command: |
+        .\\str_grouping_services.bat
+      args:
+        executable: cmd
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+    
+    - name: DELETE BATCH FILES 
+      win_file:
+        path: "{{ destination_directory }}/{{ item }}"
+        state: absent
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      loop: 
+        - str_Group_Create.bat
+        - str_grouping_services.bat
+
+

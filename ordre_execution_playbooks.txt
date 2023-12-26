@@ -1,0 +1,19 @@
+# Ordre lanceme,t des playbooks :
+
+	1- ping_nodes.yml
+	2- config_credssp.yml		===>  (si necessaire commencer sans le lancer)
+
+	3- global_infos_servers.yml     ==> Pour voir les informations globales du serveur source
+	4- create_share_backup.yml ===> Creaton du  backup  dans les machines windows 
+	4- config_Files.yml : 		==> Copier les fichiers de configurations ==>  A lancer avec des arguments
+
+	5- synchroFolders.yml / ou robocopy_powershelScript.yml  
+					 ===> pour synchroniser les dossiers copiés en backup sur la nouvelle machine
+
+	6- dir_for_strConf.yml          ===> Create les dossiers/fichiers  de configurations de str_services  et dossiers des drivers           
+
+
+
+
+
+

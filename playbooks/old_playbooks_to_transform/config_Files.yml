@@ -1,0 +1,83 @@
+---
+- name: "FICHIERS CONFIG ET IMPORTANTS A COPIER"
+  hosts: windows
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  
+  vars_files:
+        - ./external_vars.yml
+
+  tasks:
+
+    - name: DELETE COPY_LOG.CSV FILE IF ALREADY EXISTS AND CONTENT OF TEMP FOLDER
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+        Remove-Item -Path "{{ destination_directory }}Copy_Log.csv" -ErrorAction SilentlyContinue
+      ignore_errors: True
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name:  COPY  EXE  CONFIG_FILES FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - config_files.exe
+    
+    - name: RUN AND COPY  CONFIG FILES AND FOLDERS INTO SOURCE WINDOUWS SERVER
+      win_command: "{{ item }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      loop:
+        - config_files.exe
+      register: ConfigFiles_output
+      ignore_errors: True
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - win_find:
+        paths: "{{ destination_directory }}"
+        patterns: "*.csv"
+      register: output_files
+      when: "'windows' in group_names"
+
+    - name: SEE OUTPUT FILES ABOUT EXE SCRIPTS ON SOURCE  WINDOWS
+      debug:
+        var: list_output_files_scripts
+      vars:
+        list_output_files_scripts: "{{ output_files.files | map(attribute='filename') | list }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - win_shell: |
+        $ConfigFoldersAndFiles = Get-Content '{{ destination_directory }}Copy_Log.csv'
+        $ConfigFoldersAndFiles
+      register: copyLog_output
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: SEE CONFIG FILES AND FOLDERS COPIED  INTO SOURCE SERVER
+      debug:
+        var: copyLog_output.stdout_lines
+      when: "'windows' in group_names and inventory_hostname == source_host"
+    
+    - win_shell: |
+        $list_folders = Get-ChildItem "{{ destination_directory }}temp_folder"
+        $list_folders
+      register: list_folders
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name: LIST OF FOLDERS COPIED INTO BACKUP TEMP_FOLDER
+      debug:
+        var: list_folders.stdout_lines
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name: DELETE ALL EXE FILES INTO WINDOWS MACHINES
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}*.exe" -Force
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+
+

@@ -1,0 +1,78 @@
+---
+- name: PULL DRIVERS FODLERS AND FILES TO WINDOWS 
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+     - name: CREATE  FIC PARAM  DIRECTORY ON WINDOWS DESTINATION NODES  IF NOT EXISTS
+       win_file:
+         path: "{{ item }}"
+         state: directory
+       when: "'windows' in group_names   and inventory_hostname != source_host "
+       loop: 
+        - "{{ str_path_fic_param }}"
+
+     - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE
+       win_copy:
+         src: "../Executabe_Files/{{ item }}"
+         dest: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname == source_host "
+       loop:
+         - config_files_pimp.exe
+
+     - name: DELETE OLD COPIED FOLDERS  INTO TEMP FOLDER
+       win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+       when: "'windows' in group_names "
+
+     - name: COPYING 'FIC-PARAM' FOLDERs INTO SOURCE HOST ON TEMP FOLDER
+       win_command: ".\\config_files_pimp.exe {{ str_path_fic_param }}"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+     - name: CREATE PS1 SCRIPT  FIC PARAM TEMPLATE ON LOCAL CONTROLLER NODE
+       template:
+        src: ../templates/fc_param_robocopy.j2
+        dest: fc_param_robocopy.ps1
+        mode: 0755
+       when: " 'linux' in group_names "
+
+     - name: COPY PS1 FIC PARAM  FROM LOCAL TO TARGET WINDOWS SERVERS
+       win_copy:
+        src: fc_param_robocopy.ps1
+        dest: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+     - name: TRANFERING  FIC PARAM  FOLDERS FROM SOURCE TO DESTINATION
+       win_shell: " .\\fc_param_robocopy.ps1"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname != source_host"
+
+     - name: DELETE PS1 SCRIPT INTO LOCAL LINUX CONTROLLER 
+       file:
+         path: fc_param_robocopy.ps1
+         state: absent
+       when: " 'linux' in group_names " 
+
+     - name: DELETE ROBOCOPY POWERSHELL SCRIPT ON WINDOWS 
+       win_shell: "Remove-Item -Path fc_param_robocopy.ps1"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname != source_host"
+ 
+     - name: DELETE EXE FILE
+       win_shell: "Remove-Item -Path config_files_pimp.exe"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname == source_host"

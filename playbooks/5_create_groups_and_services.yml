@@ -1,0 +1,133 @@
+---
+- name: CREATE GROUPS STREAMSERVE ON REGISTRY WINDOWS
+  hosts: all
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: COPY BATCH SCRIPTS INTO SOURCE HOST TO SEE EXISTED GROUPS OF SERVICES
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      loop:
+        - ../batch_files/str_existed_groups.bat
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name: COPY BATCH - SHELL - PYTHON SCRIPTS INTO DESTINATION NODES TO MANAGE GROUP OF SERVICES
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      loop:
+        - ../batch_files/str_groups_and_services_associated.ps1
+        - ../Python_files/Filter_group.py
+
+    - name: CHECK GROUPS EXISTED AND THEIR SERVICES INTO REGISTRY WINDOWS ON SOURCE HOST
+      win_command: |
+        .\\str_existed_groups.bat
+      args:
+        executable: cmd
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+      register: existed_groups
+
+    - name: SAVE EXISTED GROUPS_SERVICES TO FILE ON SOURCE HOST
+      block:
+        - set_fact:
+            groups_services: "{{ existed_groups.stdout_lines | map('regex_replace', '^.*: (.*)$', '\\1') | list }}"
+        - name: See existed grpups of servcoes into source_host
+          debug:
+            var: groups_services
+        - name: Save groups_services to a file
+          win_copy:
+            content: "{{ groups_services }}"
+            dest: "{{ destination_directory }}Existed_groups_services.txt"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name: FETCH GROUPS_SERVICES FROM SOURCE HOST
+      block:
+        - name: Fetch Existed_groups_services file on local machine
+          fetch:
+            src: "{{ destination_directory }}Existed_groups_services.txt"
+            dest: "./"
+            flat: yes
+          when: "'windows' in group_names and inventory_hostname == source_host"
+        - name: COPY Existed_groups_services file from local to destination host 
+          win_copy:
+            src: "./Existed_groups_services.txt"
+            dest: "{{ destination_directory }}"
+          when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: FILTER AND RETRIEVE GROUP_SERVICES FROM FILES
+      block:
+        - win_shell:
+            "python .\\Filter_group.py"
+          args:
+            chdir: "{{ destination_directory }}"
+          register: filter_groups
+        - name: DISPLAY FILTER GROUPS AND SERVICES
+          debug:
+            var: filter_groups.stdout_lines
+        - name: Format group services data into JSON
+          set_fact:
+            ansible_data: "{{ groups_services | select('match', '^.+\\s:\\s.+') | map('regex_replace', '^(.+?)\\s:\\s\\[(.+?)\\]$', '{ \"group\": \"\\1\", \"services\": [\\2] }') | join(',') | regex_replace('}{', '},{') | join('') }}"
+          vars:
+            groups_services: "{{ filter_groups.stdout_lines }}"
+        - name: SEE JSON VARIABLES CREATED
+          debug:
+            var: ansible_data
+        
+        - name: Save ansible_data to a JSON file
+          win_copy:
+            content: "{{ ansible_data | to_nice_json }}"
+            dest: "{{ destination_directory }}ansible_data.json"
+        
+        - name: Execute PowerShell script with the JSON file
+          win_shell: |
+                powershell.exe -File .\str_groups_and_services_associated.ps1 -ansibleData .\ansible_data.json
+          args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - win_command: |
+        reg query "HKEY_LOCAL_MACHINE\SOFTWARE\Wow6432Node\StreamServe\ProcessManager\Groups" /s
+      register: groups_created
+      when: "'windows' in group_names and inventory_hostname != source_host"
+    - name: CHECK GROUPS SERVICES CREATED
+      debug:
+        var: groups_created.stdout_lines
+      when: "groups_created is succeeded and 'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE FILES COPIED AND NOT NECESSARY ENOUGTH
+      block:
+        - name: delete files on source_host
+          win_file:
+            path: "{{ destination_directory }}{{ item }}"
+            state: absent
+          loop:
+            - str_existed_groups.bat
+            - Existed_groups_services.txt
+          when: " 'windows' in group_names and inventory_hostname == source_host "
+
+        - name: delete files on source_host
+          win_file:
+            path: "{{ destination_directory }}{{ item }}"
+            state: absent
+          loop:
+            - str_groups_and_services_associated.ps1
+            - Filter_group.py
+            - Existed_groups_services.txt
+            - ansible_data.json
+          when: " 'windows' in group_names and inventory_hostname != source_host "
+        - name: Delete files on local linux nodes
+          file:
+            path: "./Existed_groups_services.txt"
+            state: absent
+          when: " 'linux' in group_names "

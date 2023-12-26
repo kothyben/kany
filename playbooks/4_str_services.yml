@@ -1,0 +1,77 @@
+---
+- name: RUN BATCH FILE TO CREATE STR SERVICE INTO REGISTRY AND WINDOWS MACHINE
+  hosts: windows
+  gather_facts: false
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: COPY BATCH FILES INTO WINDOWS NODES 
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      loop:
+        - ../batch_files/str_Services_Registry.bat
+        - ../batch_files/win_Services.bat
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: GET EDITIQUE NAMES TO CREATE THEM SERVICES
+      win_shell: |
+        Get-ChildItem -Path "{{ str_services_path }}" -Directory | Select-Object -ExpandProperty Name
+      register: editiques_names
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: SET FACTS REPERTOIRES FOR CREATING SERVICES
+      set_fact:
+        #repertoires: "{{ editiques_names.stdout_lines | map('regex_replace', '^editique_', '') | list }}"
+        repertoires: "{{ editiques_names.stdout_lines | map('regex_replace', '^editique_', '') | reject('match', 'Template') | list }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DISPLAY SERVICES TO CREATE
+      debug:
+        var: repertoires
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: WRITE SERVICE INTO REGISTRY BY RUNNING BATCH FILE
+      win_command: |
+        .\str_Services_Registry.bat "{{ repertoires | join(' ') }}"
+      args:
+        executable: cmd
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+     
+    - name: CREATE SERVICE INTO WINDOWS MACHINE DIRECTLY BY RUNNING BATCH FILE
+      win_command: |
+        .\\win_Services.bat  "{{ repertoires | join(' ') }}"
+      args:
+        executable: cmd
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+    
+    - name: SEE STREAMSERVE SERVICES CREATED    
+      win_shell : |
+        Get-Service  -Name StreamServe*
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      register: streamserve_services
+    - debug:
+        var:  streamserve_services.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: DELETE BATCH FILES 
+      win_file:
+        path: "{{ destination_directory }}/{{ item }}"
+        state: absent
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      loop: 
+        - str_Services_Registry.bat
+        - win_Services.bat
+
+

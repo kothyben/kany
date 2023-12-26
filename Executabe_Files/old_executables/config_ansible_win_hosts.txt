@@ -1,0 +1,112 @@
+# INTO WINDOWS MACHINE
+----------------------
+
+1- create oneuser (make him with  admin privileges)
+		==> add this user into admin group 
+
+2-Verify that powershell and .Net is compatible
+
+        get-Host | select-object "version"
+
+        Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -Recurse | Get-ItemProperty -Name version -EA 0 | Where { $_.PSChildName -Match '^(?!S)\p{L}'} | Select PSChildName, version
+
+
+3- If listener is not already set or if you need to update powershell :
+
+====> winrm quickconfig 
+
+OR :
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$url = "https://raw.githubusercontent.com/jborean93/ansible-windows/master/scripts/Upgrade-PowerShell.ps1"
+$file = "$env:temp\Upgrade-PowerShell.ps1"
+$username = "Administrator"
+$password = "Password"
+
+(New-Object -TypeName System.Net.WebClient).DownloadFile($url, $file)
+Set-ExecutionPolicy -ExecutionPolicy Unrestricted -Force
+
+&$file -Version 5.1 -Username $username -Password $password -Verbose
+
+4- check if all is done 
+ 	winrm get winrm/config/service
+        winrm get winrm/config/winrs
+        winrm enumerate winrm/config/Listener
+
+5- If necesary setup winrm (set http or https connection)
+		==> you can do same for http in that case does not put certificate.
+
+$selector_set = @{
+    Address = "*"
+    Transport = "HTTPS"
+}
+
+$value_set = @{
+    CertificateThumbprint = "E6CDAA82EEAF2ECE8546E05DB7F3E01AA47D76CE"
+}
+
+New-WSManInstance -ResourceURI "winrm/config/Listener" -SelectorSet $selector_set -ValueSet $value_set
+      
+===> after check listener 
+	 winrm enumerate winrm/config/Listener
+
+####################### YOU NEED TO SET THIS #############################################
+winrm set winrm/config/service/auth '@{Basic="true"}'
+winrm set winrm/config/service '@{AllowUnencrypted="true"}'
+
+# More settings
+winrm set WinRM/Config/Client/Auth '@{Basic="true";Digest="false";Kerberos="false";Negotiate="true";Certificate="false";CredSSP="false"}'
+
+
+
+
+NB : To open port into firewall
+-----------------------------------
+	- One port :
+	New-NetFirewallRule -DisplayName "ALLOW TCP PORT 80" -Direction inbound -Profile Any -Action Allow -LocalPort 80 -Protocol TCP
+
+	- Multiple ports :
+	New-NetFirewallRule -DisplayName "Required Port" -Direction inbound -Profile Any -Action Allow -LocalPort 80,8080,8090 -Protocol TCP
+
+	- netsh advfirewall firewall add rule name="WinRM-HTTP" dir=in localport=5985 protocol=TCP action=allow
+
+If you want to verify the Firewall rule you created, you need to enter the following in Powershell.
+$rule = "ALLOW TCP PORT 80"
+
+Get-NetFirewallRule -DisplayName $rule | ft -Property Name, DisplayName, @{Name='Protocol';Expression={($PSItem | Get-NetFirewallPortFilter).Protocol}}, @{Name='LocalPort';Expression={($PSItem | Get-NetFirewallPortFilter).LocalPort}}, @{Name='RemotePort';Expression={($PSItem | Get-NetFirewallPortFilter).RemotePort}}, @{Name='RemoteAddress';Expression={($PSItem | Get-NetFirewallAddressFilter).RemoteAddress}}, Enabled, Profile, Direction, Action
+
+
+
+# INTO LINUX MACHINE
+---------------------
+0- First of all you can quicly check connection :
+ curl -v http://172.21.154.170:5985 
+ telnet 172.21.154.170 5985 
+	==> we must to have an answer 
+	==> help about telnet https://linuxhint.com/linux-telnet-command/
+
+
+1- inventory  & ansible.cfg
+        $ vim hosts
+                [windows]
+                windows10 ansible_host=1.1.1.1
+
+                [windows:vars]
+                ansible_user=ansible   # YOU MUST TAKE ONE ADMIN USER IT IS MANDATORY
+                ansible_password=mypassword
+                ansible_port=5986
+                anible_connection=winrm
+                ansible_winrm_transport=basic
+                ansible_winrm_server_cert_validation=ignore
+                :wq
+
+2- playbook
+        vim ping.yml
+        ---
+        - name: " test connection with windowd node"
+          hosts: windows
+          become: yes
+          gather_facts: False
+          tasks:
+            - name: "ping windows machine"
+              ansible.windows.win_ping:

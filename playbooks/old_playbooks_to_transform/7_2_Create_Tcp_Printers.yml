@@ -1,0 +1,79 @@
+---
+- name: CREATE DRIVERS PORTS AND PRINTERS TCP IP ON DESTINATION HOST
+  hosts: all
+  gather_facts: False
+  become_method: ansible.builtin.runas
+  vars:
+    ansible_become_user: "{{ ansible_user }}"
+    ansible_become_pass: "{{ ansible_password }}"
+  
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: Obtenir les informations des imprimantes et les sauvegarder dans un fichier
+      win_shell: |
+        # Récupérer les informations des imprimantes
+        $printers = Get-Printer | Select-Object Name, DriverName, PortName, DeviceType
+        # # Convertir les informations des imprimantes en JSON
+        $printers | ConvertTo-Json | Out-File -FilePath "printers_infos.json"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: Creer un fichier local pour enregistrer les informations des imprimantes
+      fetch:
+        src: "{{ destination_directory }}printers_infos.json"
+        dest: "./"
+        flat: yes
+      when: "'windows' in group_names and inventory_hostname == source_host "
+ 
+    - name: Copier le fichier JSON vers la machine destination
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      loop:
+        - ".//printers_infos.json"
+        - "..//batch_files//3_install_printers_tcp.ps1"
+
+    - name: Lire le fichier Json et installer les imprimantes TCP
+      win_shell: |
+        .\\3_install_printers_tcp.ps1
+      args:
+        chdir: "{{ destination_directory}}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE FILES NOT STILL USED
+      block:
+        - name: delete files on local nodes
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - ".//printers_infos.json"
+          when: "'linux' in group_names"
+          
+
+        - name: delete files on destination nodes
+          win_file:
+            path: "{{ destination_directory}}{{ item }}"
+            state: absent
+          loop:
+            - 3_install_printers_tcp.ps1
+            - printers_infos.json
+          when: "'windows' in group_names and inventory_hostname != source_host"
+          
+
+        - name: delete files on source node
+          win_file:
+            path: "{{ destination_directory}}{{ item }}"
+            state: absent
+          loop:
+            - printers_infos.json
+          when: "'windows' in group_names and inventory_hostname == source_host"
+          
+
+
+    
+

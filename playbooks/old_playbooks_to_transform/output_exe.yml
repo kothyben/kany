@@ -1,0 +1,23 @@
+---
+- name: "OUTPUT OF EXE FILES"
+  hosts: windows
+  become: yes
+  become_method: runas
+  gather_facts: false
+  
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: "OutPut of exe files"
+      win_shell: |
+        chdir '{{ dir_windows }}'
+        ls | findstr ".csv"
+      register: output_exe
+    - debug: 
+        msg: "{{ output_exe.stdout_lines }}"
+     

@@ -1,0 +1,15 @@
+---
+- name : "work into windows"
+  hosts: all
+  gather_facts: False
+  vars_files:
+    - ./external_vars.yml
+  tasks: 
+    - name: "create directory jenkinsFolders if not exist"
+      win_file: 
+        path:  '{{ dir_windows }}'
+        state: directory
+      when: ("windows" in group_names)
+
+
+

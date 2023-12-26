@@ -1,0 +1,72 @@
+- name: CREATE SHARED FOLDERS AND FILES ON WINDOWS NODES
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE TEMP DIRECTORY ON WINDOWS NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ destination_directory }}temp_folder"
+        state: directory
+      when: "'windows' in group_names  "
+
+    - name:  COPY SCRIPT_SHARE.EXE FILE ON WINDOWS NODES
+      win_copy:
+        src: "../Executabe_Files/share_folders.exe"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names  "
+
+    - name: SHARE TEMP FOLDER BY EXECUTING _SHARE.EXE FILE
+      block:
+        - name: Create ps1 to run exe file (without stderrr)
+          win_copy:
+            content: |
+              $script={{ destination_directory }}share_folders.exe
+              $script
+            dest: '{{ destination_directory }}\shareFolders.ps1'
+          
+        - name: Run ps1 file to sharing temp_folder 
+          win_shell:  .\\shareFolders.ps1
+          args:
+            chdir: "{{ destination_directory }}" 
+          register: script_output 
+          ignore_errors: True
+      when: "'windows' in group_names "
+      
+    
+    - name: SEE SCRIPT OUPUT ON DESTINATION WINDOWS MACHINE
+      debug:
+        msg: "{{  script_output.stdout_lines }}"
+      when: "'windows' in group_names"
+
+    - win_find:
+        paths: "{{ destination_directory }}"
+        patterns: "*.csv"
+      register: output_files
+      when: "'windows' in group_names and inventory_hostname == destination_host"
+
+    - name: SEE OUTPUT FILES OF .EXE SCRIPTS ON DESTINTION WINDOWS
+      debug:
+        var: list_output_files_scripts
+      vars:
+        list_output_files_scripts: "{{ output_files.files | map(attribute='filename') | list }}"
+      when: "'windows' in group_names and inventory_hostname == destination_host"
+    
+    - name: DELETE SHARE FOLDERS  EXE FILE INTO WINDOWS MACHINES
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}share_folders.exe" -Force
+      when: "'windows' in group_names "      
+
+    - name: DELETE PS1 FILE INTO WINDOWS MACHINES
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}shareFolders.ps1" -Force
+      when: "'windows' in group_names "
+ 

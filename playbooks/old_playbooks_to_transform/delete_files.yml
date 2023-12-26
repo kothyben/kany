@@ -1,0 +1,10 @@
+---
+- name: "delete files"
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: " Delete local file "
+      shell: rm - Rf './STR-MUT-TEST2/'
+      when: ("jenkinsPro" in inventory_hostname)
+
+...

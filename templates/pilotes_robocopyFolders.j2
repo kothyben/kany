@@ -1,0 +1,14 @@
+$password = "{{ hostvars[source_host]['ansible_password'] }}"
+net use Z: /delete 2>$null # Supprime le lecteur Z: et redirige les erreurs vers $null pour les ignorer
+
+# Montage du lecteur Z:
+net use Z: "\{{ folder_share }}" /user:Administrator $password
+
+$login = $env:USERNAME
+
+# Copie des fichiers avec Robocopy
+robocopy Z:\ "{{ shared_dest_dir }}" /E /R:3 /W:30 /NFL /NDL /NJH /NJS
+
+# Suppression du lecteur Z: (s'il est monté)
+net use Z: /delete 
+

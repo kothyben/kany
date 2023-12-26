@@ -1,0 +1,64 @@
+---
+- name: MIGRATE PRINTERS AND CONFIGURATIONS FROM SOURCE TO DESTINATION USING PRINTBRM TOOLS
+  hosts: all
+  gather_facts: True
+  become_method: ansible.builtin.runas
+  vars:
+    ansible_become_user: "{{ ansible_user }}"
+    ansible_become_pass: "{{ ansible_password }}"
+    win_exe_dir: "C:\\WINDOWS\\System32\\spool\\tools\\"
+
+  vars_files:
+  - ./external_vars.yml
+
+  tasks:
+    - name: BACKUP PRINTERS FROM SOURCE HOST INTO FILE
+      win_shell: |
+        "{{ win_exe_dir }}PrintBrm.exe -b -s {{ ansible_hostname }} -f {{ destination_directory }}printersTest.printerExport"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+      register: backup_result
+
+    - name: DISPLAY PROGRESS DURING WAITNG
+      block:
+        - debug:
+            msg: "Waiting for the backup file to be created..."
+          when: backup_result is succeeded and inventory_hostname == source_host
+
+        - name: Wait for the backup file to be created
+          win_stat:
+            path: "{{ destination_directory }}printersTest.printerExport"
+          register: backup_file_stat
+          until: backup_file_stat.stat.exists and inventory_hostname == source_host
+          retries: 120  # Ajustez selon le temps nécessaire pour que le fichier soit créé
+          delay: 20  # Intervalle de vérification (en secondes)
+
+        - name: Display final status
+          debug:
+            msg: "Backup file created successfully!"
+          when: backup_result is succeeded and backup_file_stat.stat.exists and inventory_hostname == source_host
+
+  handlers:
+    - name: printerExport
+    #- name: FETCH .PrintrExport FILE ON LOCAL
+      fetch:
+        src: "{{ destination_directory }}printersTest.printerExport"
+        dest: "./"
+        flat: yes
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    - name: COPY .PrintrExport FILE ON DESTINATION HOST
+      win_copy:
+        src: "./printersTest.printerExport"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: RESTORE PRINTERS ON DESTINATION HOST TAKEN FROM SOURCE hosts
+      win_shell: |
+        "{{ win_exe_dir }}PrintBrm.exe -r -s \\{{ ansible_hostname }} -f {{ destination_directory }}printersTest.printerExport"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+      register: printersrestored_log
+
+    - name: SEE FAILED ADDED PRINTERS
+      debug:
+        var: printersrestored_log
+      when: "'windows' in group_names and inventory_hostname != source_host"

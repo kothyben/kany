@@ -1,0 +1,47 @@
+---
+- name: "run shell command and config credssp"
+  hosts: all
+  gather_facts: False
+  tasks:
+    - name: "Enable CredSSP into windows nodes"
+      win_shell: |
+        Enable-WSManCredSSP -Role Client -DelegateComputer  *  -Force
+        Enable-WSManCredSSP -Role Server -Force
+      when: ("windows" in group_names)
+
+    - name: "Set auth credssp to True"
+      win_shell: |
+         set winrm/config/client/auth @{CredSSP="true"}
+         set winrm/config/service/auth @{CredSSP="true"}
+      when: ("windows" in group_names)
+
+    - name: " Display state of service winrm"
+      win_shell: |
+        start-Service WinRM
+        Get-Service WinRM
+      register: winrm
+      when: ("windows" in group_names)
+
+    - name: " state of servcie winrm"
+      debug:
+        msg: "{{ winrm.stdout_lines }}"
+      when: ("windows" in group_names)
+
+
+    - name: "check configuration of creddssp"
+      win_shell: |
+        Get-WSManCredSSP
+        winrm get winrm/config/client/auth
+        winrm get winrm/config/service/auth
+      register: credssp_log
+      when: ("windows" in group_names)
+
+    - name: "Display output creddssp_log"
+      debug:
+       msg: "{{ credssp_log.stdout_lines }}"
+      when: ("windows" in group_names)
+
+...
+
+
+

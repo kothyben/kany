@@ -1,0 +1,54 @@
+---
+- name: MANAGED FOLDERS AND FILES BETWEEN WINDOWS NODES
+  hosts: all
+  gather_facts: False
+
+  vars_files :
+        - ./external_vars.yml
+  tasks:
+    - name: Get directories and files  listing on windows source
+      win_shell: |
+                Get-ChildItem -Path "{{ folder_final }}"  -Directory
+                Get-ChildItem -Path "{{ folder_final }}"  -File
+      register: directory_content
+      when: inventory_hostname == source_host
+
+    - name: Display all directory content
+      debug:
+        var: directory_content.stdout_lines
+      when: inventory_hostname == source_host
+
+    - name: Save directory listing to file on local controller
+      local_action: copy content="{{ hostvars[source_host]['directory_content']['stdout'] }}" dest="./directory_content.txt"
+      when: "'linux' in group_names"
+
+    - name: Copy  directory listig file to windows destination
+      win_copy:
+        src: "{{ playbook_dir}}/directory_content.txt"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host" 
+
+    - name: Create directories and add content if different on WINDOWS DESTINAATION MACHINESL
+      win_shell: |
+        $directoryList = Get-Content "{{ destination_directory }}\directory_content.txt" | Select-String -Pattern "^d-----\s+\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s+(.*)" | ForEach-Object { $_.Matches.Groups[1].Value }
+        foreach ($dir in $directoryList) {
+          $dirPath = "{{ destination_directory }}\$dir"
+          if (-Not (Test-Path $dirPath)) {
+            New-Item -Path $dirPath -ItemType Directory
+          } else {
+            $sourceFiles = Get-ChildItem -Path "{{ folder_final }}\$dir" -File
+            $destinationFiles = Get-ChildItem -Path $dirPath -File
+            foreach ($sourceFile in $sourceFiles) {
+              $destinationFile = Join-Path $dirPath $sourceFile.Name
+              $sourceContent = Get-Content $sourceFile.FullName -Raw
+              $destinationContent = $null
+              if (Test-Path $destinationFile) {
+                $destinationContent = Get-Content $destinationFile -Raw
+              }
+              if ($sourceContent -ne $destinationContent) {
+                Copy-Item -Path $sourceFile.FullName -Destination $destinationFile -Force
+              }
+            }
+          }
+        }
+      when: "'windows' in group_names and inventory_hostname != source_host "

@@ -1,0 +1,23 @@
+# Define paths and credentials
+$password = "{{ hostvars[source_host]['ansible_password'] }}"
+net use Z: "\{{ folder_share }}" /user:Administrator $password
+
+# Perform synchronization and capture output
+$login = $env:USERNAME
+$robocopyOutput = robocopy Z:\ "{{ shared_dest_dir }}" /E /MIR /R:3 /W:1 /NFL /NDL /NJH /NJS
+
+# Check the robocopy exit code to determine if any files were copied or modified
+if ($LastExitCode -eq 0) {
+    Write-Output "Synchronization successful. No changes detected."
+} elseif ($LastExitCode -eq 1 -or $LastExitCode -eq 2) {
+    Write-Output "Synchronization successful. Files copied or modified."
+} else {
+    Write-Output "Error during synchronization. Exit code: $LastExitCode"
+}
+
+# Save the result message to a log file
+$robocopyOutput | Out-File -FilePath "log_file.txt" -Append
+
+# Clean up: Disconnect network drive
+net use Z: /delete
+

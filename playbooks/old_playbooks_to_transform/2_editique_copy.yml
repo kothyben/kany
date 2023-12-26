@@ -1,0 +1,120 @@
+---
+- name: FICHIERS CONFIG ET IMPORTANTS A COPIER + SYNCHRONISATION DIRECTE AVEC LES MACHINES DE DESTINATION
+  hosts: all
+  gather_facts: False
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: DELETE OLD COPIES INTO TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - config_files_pimp.exe
+
+    - name: RUN THE SCRIPT EXE FOR COPYING CONFIG FOLDERS STR SERVICES EDITIQUES
+      win_command: ".\\config_files_pimp.exe {{ str_services_path }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+    - name: CREATE PS1 TEMPLATE FOR SYNCHROFOLDERS TO DESTINATION SERVERS
+      template:
+        src: ../templates/synchroFolders.j2
+        dest: synchroFolders.ps1
+      when: " 'linux' in group_names"
+
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src: synchroFolders.ps1
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - name: RUN SYNCHROFOLDERS POWERSHELL SCRIPT
+      win_command: powershell ".\\synchroFolders.ps1"
+      args:
+         chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - win_shell: |
+          $folder_synchronized = Get-ChildItem "{{ destination_directory}}temp_folder"
+          $folder_synchronized
+      register: folderSynchronized
+      when: "'windows' in group_names and inventory_hostname != source_host "
+    - name: SEE FOLDERS SYNCHRONIZED
+      debug:
+         var: folderSynchronized.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: RECUPERER LES DOSSIERS RESTANTS APRES LA COPIE
+      win_shell: |
+        $folder_to_copy = Get-ChildItem -Path "E:\\STR_SERVICES\\*"
+        $folder_to_copy
+        $folders_synchronized = Get-ChildItem -Path "C:\Users\Administrator\Desktop\\temp_folder\\*"
+        $folders_synchronized
+        $remaining_folders = Compare-Object -ReferenceObject $folders_synchronized -DifferenceObject $folder_to_copy | Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -ExpandProperty InputObject
+        $remaining_folders
+      register: remaining_folders
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: Debug Remaining Folders
+      debug:
+         var: remaining_folders.stdout_lines
+      when: "'windows' in group_names and inventory_hostname == source_host and remaining_folders | length > 0"
+
+
+    - name: DELETE OLD COPIES INTO TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY EDITIQUE DIRECTORIES FROM  SHARED TEMP  FOLDER TO STR_SERVICES DIRECTORY
+      win_shell: |
+        Get-ChildItem -Path "{{ destination_directory }}temp_folder\\*" -Filter "editique_*" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+          Copy-Item -Path $_.FullName -Destination "{{ str_services_path }}" -Recurse -ErrorAction SilentlyContinue
+        }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: LANCER LA COPIE AVEC LES DOSSIERS RESTANTS
+      win_command: ".\\config_files_pimp.exe {{ item }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      loop: "{{ remaining_folders.stdout_lines }}"
+      when: "'windows' in group_names and inventory_hostname == source_host and remaining_folders | length > 0"
+
+    -  name: RUN SYNCHROFOLDERS POWERSHELL SCRIPT
+       win_command: powershell ".\\synchroFolders.ps1"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: COPY EDITIQUE DIRECTORIES FROM  SHARED TEMP  FOLDER TO STR_SERVICES DIRECTORY
+      win_shell: |
+        Get-ChildItem -Path "{{ destination_directory }}temp_folder\\*" -Filter "editique_*" -Recurse -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          Copy-Item -Path $_.FullName -Destination "{{ str_services_path }}" -Recurse -ErrorAction SilentlyContinue
+        }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: DELETE ROBOCOPY POWERSHELL SCRIPT
+      win_shell: "Remove-Item -Path synchroFolders.ps1"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: DELETE EXE FILE
+      win_shell: "Remove-Item -Path config_files_pimp.exe"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+      

@@ -1,0 +1,12 @@
+---
+- name: Check Jenkins Workspace Permissions
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Get Workspace Permissions
+      command: "ls -l {{ workspace }}"
+      register: result
+
+    - name: Display Workspace Permissions
+      debug:
+        var: result.stdout

@@ -1,0 +1,80 @@
+---
+- name: FICHIERS CONFIG ET IMPORTANTS A COPIER
+  hosts: windows
+  gather_facts: False
+  
+  vars_files:
+    - ./streamservice_vars.yml
+    - ./external_vars.yml
+
+
+  tasks:
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      template:
+        src: ../templates/launch_synchrofolders.j2
+        dest: "{{ destination_directory }}launch_synchrofolders.ps1"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: DELETE OLD COPIES
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE 
+      win_copy:
+        src: "../Executabe_Files/{{ item }}" 
+        dest: "{{ destination_directory }}" 
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop: 
+        - config_files_pimp.exe
+  
+    - name: Get PowerShell executable path
+      win_shell: Get-Command -Name powershell.exe | Select-Object -ExpandProperty Source
+      register: powershell_path_result
+      when: "'windows' in group_names and inventory_hostname == source_host"
+
+    #- name: RUN THE SCRIPT
+      #win_command: "{{ powershell_path_result.stdout }} .\\launch_synchrofolders.ps1"
+      #args:
+       # chdir: "{{ destination_directory }}"
+      #when: "'windows' in group_names and inventory_hostname == source_host "
+      #register: disk_space_result
+
+    - name: RUN THE SCRIPT
+      win_shell: |
+        Start-Process -FilePath "{{ destination_directory }}launch_synchrofolders.ps1" -WindowStyle Hidden
+      register: disk_space_result
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+    - name: WAIT FOR THE SCRIPT TO FINISH
+      pause:
+        minutes: 2
+      when: "'windows' in group_names and inventory_hostname == source_host "
+    
+    - name: Debug script output
+      debug:
+        var: disk_space_result.stdout
+      when: "'windows' in group_names and inventory_hostname == source_host "    
+
+    - name: LAUNCH SYNCHROFOLDERS PLAYBOOK IF DISK SPACE IS EXHAUSTED
+      include_tasks: synchroFolders.yml
+      when: "'windows' in group_names and inventory_hostname == source_host and 'Arrêt de la copie' in disk_space_result.stdout"
+
+    - name: DELETE OLD COPIES
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host and 'Arrêt de la copie' in disk_space_result.stdout"
+
+    - name: RERUN THE SCRIPT IF THERE ARE STILL FOLDERS TO COPY
+      win_shell: 'powershell -ExecutionPolicy Bypass -File {{ destination_directory }}launch_synchrofolders.ps1'
+      when: "'windows' in group_names and inventory_hostname == source_host and 'Arrêt de la copie' in disk_space_result.stdout"
+
+    - name: WAIT FOR THE SCRIPT TO FINISH
+      pause:
+        minutes: 2
+      when: "'windows' in group_names and inventory_hostname == source_host and 'Arrêt de la copie' in disk_space_result.stdout"
+
+    - name: DELETE EXE FILES INTO WINDOWS MACHINES
+      win_shell: |
+        Remove-Item -Path "{{ destination_directory }}config_files_pimp.exe" -Force
+      when: "'windows' in group_names and inventory_hostname == source_host"
+

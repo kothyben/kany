@@ -1,0 +1,50 @@
+- name: Create standalone executables
+  hosts: localhost
+  gather_facts: false
+  vars:
+    script_name: "copy_folders.py"
+    script_directory: "../Python_files/"
+    destination_directory: "../Executabe_Files/"
+
+  tasks:
+    - name: Install PyInstaller
+      pip:
+        name: pyinstaller
+        state: present
+
+    - name: Create destination windows directories
+      file:
+        path: "{{ playbook_dir }}/{{ destination_directory }}/windows"
+        state: directory
+
+    - name: Create destination linux directories
+      file:
+        path: "{{ playbook_dir }}/{{ destination_directory }}/linux"
+        state: directory
+
+    - name: Create standalone executable for Windows
+      command: "pyinstaller --onefile --name copyFolders_windows.exe {{ playbook_dir }}/{{ script_directory }}{{ script_name }}"
+      args:
+        chdir: "{{ playbook_dir }}/{{ destination_directory }}/windows"
+      environment:
+        PYINSTALLER_SPECIFIC_PLATFORM: "win"
+
+    - name: Copy Windows standalone executable
+      copy:
+        src: "{{ playbook_dir }}/{{ destination_directory }}/windows/dist/copyFolders_windows.exe"
+        dest: "{{ playbook_dir }}/{{ destination_directory }}/copyFolders_windows.exe"
+        force: yes
+
+    - name: Create standalone executable for Linux
+      command: "pyinstaller --onefile --name copyFolders_linux {{ playbook_dir }}/{{ script_directory }}{{ script_name }}"
+      args:
+        chdir: "{{ playbook_dir }}/{{ destination_directory }}/linux"
+      environment:
+        PYINSTALLER_SPECIFIC_PLATFORM: "linux"
+
+    - name: Copy Linux standalone executable
+      copy:
+        src: "{{ playbook_dir }}/{{ destination_directory }}/linux/dist/copyFolders_linux"
+        dest: "{{ playbook_dir }}/{{ destination_directory }}/copyFolders_linux"
+        force: yes
+

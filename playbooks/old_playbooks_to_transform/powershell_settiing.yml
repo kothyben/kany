@@ -1,0 +1,23 @@
+---
+#----------------------------  Trouuver le chemin de powershell
+- name: Trouver le chemin de PowerShell sur la machine cible
+  hosts: windows
+  gather_facts: false
+
+  tasks:
+    - name: Vérifier l'existence de PowerShell
+      win_shell: |
+        $path = (Get-Command powershell).Source
+        $path
+      register: powershell_path
+      changed_when: false
+      failed_when: false
+
+    - name: Afficher le chemin de PowerShell
+      debug:
+        var: powershell_path.stdout
+      when: powershell_path.stdout is defined
+
+    - name: Set global variable ansible_shell_executable
+      set_fact:
+        ansible_shell_executable: "{{ powershell_path.stdout  }}"

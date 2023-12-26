@@ -1,0 +1,80 @@
+---
+- name: CREATE OUTQUEUES PRINTERS AND PRINTERPORTS INTO  WINDOWS DESTINATION
+  hosts: windows 
+  gather_facts: False
+  become_method: runas
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+        - ./external_vars.yml
+
+  tasks:
+    - name: COPY BATCH AND PS1 FILES INTO WINDOWS DESTINATION NODES
+      win_copy:
+        src: "{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      loop:
+        - ../batch_files/1_add_ports_only.ps1
+        - ../batch_files/2_add_printers_only.ps1
+        - ../batch_files/removeBoth_PrinterAndPorts.ps1
+        - ../batch_files/used_ports.ps1
+
+
+    - name: RETRIEVE EDITIQUE NAMES TO CREATE THEM PRINTERPORTS
+      block:
+        - name: check editiques_names
+          win_shell: |
+            Get-ChildItem -Path "{{ str_services_path }}" -Directory | Select-Object -ExpandProperty Name
+          register: editiques_names
+
+        - name: set fact printerports from editique names 
+          set_fact:
+            printerPorts: "{{ editiques_names.stdout_lines | map('regex_replace', '^editique_', '') | reject('match', 'Template') | list }}"
+
+        - name: display printerpports to create
+          debug:
+            var: printerPorts
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: CREATE PRINTERPORTS BY RUNNING SCRIPTS PS1
+      win_shell: |
+        .\1_add_ports_only.ps1 -printerPorts "{{ printerPorts | join('", "') }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: CREATE OUTQUEUES PRINTERS BY RUNNING SCRIPTS PS1
+      win_shell: .\\2_add_printers_only.ps1  -printerPorts "{{ printerPorts | join('", "') }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - win_shell: |
+        .\\used_ports.ps1
+      args:
+        chdir:  "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      register: outqueue
+
+    - name: DISPLAY OUTQUEUES CREATED
+      debug:
+         msg: "{{ outqueue.stdout_lines }}"
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: DELETE PS1 AND BATCH FILES COPIED
+      win_file: 
+        path: "{{ destination_directory}}/{{item}}"
+        state: absent
+      when: "'windows' in group_names and inventory_hostname != source_host "
+      loop:
+        - 2_add_printers_only.ps1
+        - 1_add_ports_only.ps1
+        - removeBoth_PrinterAndPorts.ps1
+        - used_ports.ps1
+
+

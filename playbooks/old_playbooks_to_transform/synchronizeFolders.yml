@@ -1,0 +1,57 @@
+---
+- name: SYNCHRONIZE DIRECTORIES USING ROBOCOPY
+  hosts: windows
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: Ensure log directory exists
+      win_shell: |
+        $logPath = "C:\Users\$env:USERNAME\Desktop\SyncLogs"
+        if (Test-Path $logPath) {
+            Remove-Item -Path $logPath -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $logPath -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: Set ansible_user and ansible_password on destination_host
+      set_fact:
+        ansible_user_src: "{{ hostvars[source_host].ansible_user }}"
+        ansible_password_src: "{{ hostvars[source_host].ansible_password }}"
+      delegate_to: destination_host
+
+    - name: Sync directories on destination_host
+      win_shell: |
+        $folder_share = "{{ folder_share }}"
+        $destinationPath = "{{ shared_dest_dir }}"
+        $logFile = "C:\Users\$env:USERNAME\Desktop\SyncLogs\robocopy.log"
+        $username = "{{ ansible_user_src }}"
+        $password = "{{ ansible_password_src }}"
+
+        # Use NET USE to establish a connection with authentication
+        net use $folder_share $password /USER:$username
+
+        try {
+            robocopy $sourcePath $destinationPath /MIR /R:3 /W:1 /LOG:$logFile
+            Write-Output "Synchronization successful!"
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            Write-Output "Error during synchronization: $errorMessage"
+            $errorLog = "C:\Users\$env:USERNAME\Desktop\SyncLogs\error.log"
+            Out-File -FilePath $errorLog -InputObject $errorMessage -Append
+            exit 1
+        }
+
+        # Disconnect network drive after sync
+        net use $sourcePath /delete
+
+      when: "'windows' in group_names and inventory_hostname != source_host "
+

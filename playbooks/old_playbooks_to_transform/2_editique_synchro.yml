@@ -1,0 +1,73 @@
+---
+- name: FICHIERS EDITIQUE  A COPIER + SYNCHRONISATION DIRECTE AVEC LES MACHINES DE DESTINATION
+  hosts: all
+  gather_facts: False
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE PS1 TEMPLATE SCRIPTS FOR SYNCHROFOLDERS
+      template:
+        src: ../templates/editique_synchro.j2
+        dest: editiqueFolders.ps1
+      when: " 'linux' in group_names"
+
+    - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src: editiqueFolders.ps1
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - win_shell: |
+        $editique_folders = Get-ChildItem "{{ str_services_path }}\\*" -Directory -ErrorAction SilentlyContinue
+        $editique_foldersCount = $editique_folders.Count
+        $editique_foldersNames = $editique_folders.Name
+        $editique_foldersCount, $editique_foldersNames
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      register: EDITIQUE_INFO
+    - name: DISPLAY NUMBER OF EDITIQUE FOLDERS AND THEIR NAMES
+      debug:
+        msg: "Number of Editique Folders: {{ editique_foldersCount }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+
+    - name: RUN EDITIQUE SYNCHRO  POWERSHELL SCRIPT
+      win_command: powershell ".\\editiqueFolders.ps1"
+      args:
+         chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - win_shell: |
+          $folder_synchronized = Get-ChildItem "{{ destination_directory}}temp_folder"
+          $folder_synchronized
+      register: folderSynchronized
+      when: "'windows' in group_names and inventory_hostname != source_host "
+    - name: SEE FOLDERS SYNCHRONIZED
+      debug:
+         var: folderSynchronized.stdout_lines
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: COPY EDITIQUE DIRECTORIES FROM  SHARED TEMP  FOLDER TO STR_SERVICES DIRECTORY
+      win_shell: |
+        Get-ChildItem -Path "{{ destination_directory }}temp_folder\\*" -Filter "editique_*" -Recurse -ErrorAction SilentlyContinue | ForEach-Object {
+          Copy-Item -Path $_.FullName -Destination "{{ str_services_path }}" -Recurse -ErrorAction SilentlyContinue
+        }
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE FOLDERS INTO TEMP FOLDERS ON DESTINATION SERVERS
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: DELETE ROBOCOPY POWERSHELL SCRIPT
+      win_shell: "Remove-Item -Path editiqueFolders.ps1"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE PS1 FILES INTO LOCAL LINUX
+      file:
+        path: "./editiqueFolders.ps1"
+        state: absent
+      when: "'linuw' in group_names "

@@ -1,0 +1,77 @@
+---
+- name: PULL FODLERS AND FILES TO WINDOWS WITH POWERSHELL SCRIPT PS1
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+     - name: CREATE POWERSHELL SCRIPT  TEMPLATE ON LOCAL CONTROLLER NODE
+       template:
+        src: ../templates/synchroFolders.j2
+        dest: synchroFolders.ps1
+        mode: 0755
+       when: " 'linux' in group_names "
+
+     - name: COPY PS1 SCRIPT FROM LOCAL TO TARGET WINDOWS SERVERS
+       win_copy:
+        src: synchroFolders.ps1
+        dest: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+     - name: DELETE PS1 SCRIPT INTO LOCAL LINUX CONTROLLER 
+       file:
+         path: synchroFolders.ps1
+         state: absent
+       when: " 'linux' in group_names " 
+
+     - win_shell: ' Set-Location "{{ destination_directory }}";  dir | findstr.exe "synchroFolders.ps1" '
+       register: ps1Scripts
+       when: "'windows' in group_names and inventory_hostname !=  source_host  "
+
+     - name: CHECK POWERSHELL SCRIPTS COPIED
+       debug:
+        var: ps1Scripts.stdout_lines
+       when: "'windows' in group_names and inventory_hostname !=  source_host  "
+
+     - name: Get PowerShell executable path
+       win_shell: Get-Command -Name powershell.exe | Select-Object -ExpandProperty Source
+       register: powershell_path_result
+       when: "'windows' in group_names and inventory_hostname != source_host"
+
+     - name: Display PowerShell executable path
+       debug:
+         var: powershell_path_result.stdout
+       when: "'windows' in group_names and inventory_hostname != source_host"
+
+     - name: RUN SYNCHROFOLDERS POWERSHELL SCRIPT
+       win_command: "{{ powershell_path_result.stdout }} .\\synchroFolders.ps1"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname != source_host"
+     
+
+     - win_shell: |
+          $folder_synchronized = Get-ChildItem "{{ destination_directory}}temp_folder"
+          $folder_synchronized
+       register: folderSynchronized
+       when: "'windows' in group_names and inventory_hostname != source_host "
+     - name: SEE FOLDERS SYNCHRONIZED
+       debug: 
+         var: folderSynchronized.stdout_lines
+       when: "'windows' in group_names and inventory_hostname != source_host"
+
+     - name: DELETE ROBOCOPY POWERSHELL SCRIPT
+       win_shell: "Remove-Item -Path synchroFolders.ps1"
+       args:
+         chdir: "{{ destination_directory }}"
+       when: "'windows' in group_names and inventory_hostname != source_host"
+ 
+

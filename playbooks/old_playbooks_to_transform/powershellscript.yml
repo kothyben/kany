@@ -1,0 +1,37 @@
+---
+- name: "COPY EXE AND CREATE PS1 FILES INTO WINDOWS"
+  hosts: all
+  gather_facts: False
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+  
+    - name: "Current Local Jenkins Directory"
+      shell: pwd
+      when: ("linux" in group_names)
+      register: dir
+    - debug: 
+        msg: "{{ dir.stdout_lines }}"
+      when: ("linux" in group_names)
+      
+      
+    - name: "create powershell script file on jenkins Mchine"
+      copy:
+        content: |
+            $script={{ dir_windows }}{{ item }}
+            $script
+        dest:  file.ps1
+      when: ("linux" in group_names)
+      loop: 
+        - "{{ file_to_run }}"
+      
+    - name: "copy PS1 files into windows nodes"
+      win_copy:
+        src: file.ps1
+        dest: '{{ dir_windows }}'
+      when: ("windows" in group_names)
+     
+
+     
+    

@@ -1,0 +1,53 @@
+---
+- name: Sync Directories using win_robocopy
+  hosts: windows
+  gather_facts: False
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    # Ensure log directory exists or clear it if it already exists
+    - name: Ensure log directory exists
+      win_shell: |
+        $logPath = "C:\Users\$login\Desktop\SyncLogs"
+        if (Test-Path $logPath) {
+            Remove-Item -Path $logPath -Recurse -Force
+        }
+        New-Item -ItemType Directory -Path $logPath -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: Set ansible_user and ansible_password on destination_host
+      set_fact:
+        ansible_user_src: "{{ hostvars['source_host'].ansible_user }}"
+        ansible_password_src: "{{ hostvars['source_host'].ansible_password }}"
+      delegate_to: destination_host
+
+
+    - name: Sync directories on destination_host
+      win_shell: |
+        Import-Module win_robocopy
+        $sourcePath = "{{ folder_share }}"
+        $destinationPath = "{{ shared_dest_dir }}"
+        $logFile = "C:\SyncLogs\robocopy.log"
+        $username = "{{ ansible_user_src }}"
+        $password = "{{ ansible_password_src }}"
+
+        try {
+            Invoke-WinRoboCopy -Source $sourcePath -Destination $destinationPath -Mirror -RetryCount 3 -RetryWaitSec 1 -LogToFile -LogFile $logFile -User $username -Password $password
+            Write-Output "Synchronization successful!"
+        }
+        catch {
+            $errorMessage = $_.Exception.Message
+            Write-Output "Error during synchronization: $errorMessage"
+            $errorLog = "C:\SyncLogs\error.log"
+            Out-File -FilePath $errorLog -InputObject $errorMessage -Append
+            exit 1
+        }
+      delegate_to: destination_host
+

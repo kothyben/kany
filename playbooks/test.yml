@@ -1,0 +1,51 @@
+---
+- name: SEE FAILED DRIVERS, PRINTERS, AND PROCESSORS
+  hosts: all
+  gather_facts: True
+  become_method: ansible.builtin.runas
+  vars:
+    ansible_become_user: "{{ ansible_user }}"
+    ansible_become_pass: "{{ ansible_password }}"
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+
+    - name: CREATE tcp printer script to copying 
+      template:
+        src: ../templates/tcp_printers.j2
+        dest: tcp_printersm_robocopy.ps1
+        mode: 0755
+      when: " 'linux' in group_names "
+
+    - name: COPY PS1  FROM LOCAL TO TARGET WINDOWS SERVERS
+      win_copy:
+        src: tcp_printersm_robocopy.ps1
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname !=  source_host "
+
+    - name: TRY TO TRANFER  PRINTEREXPORT FILE FROM SOURCE TO DESTINATION
+      win_shell: " .\\tcp_printersm_robocopy.ps1"
+      args:
+         chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+
+    - name: Extract failed components
+      win_shell: Get-Content "{{ destination_directory }}fichier_test.txt"
+      register: failed_components
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: Extract content starting from "The following objects failed to install:"
+      set_fact:
+        start_index: "{{ failed_components.stdout_lines.index('The following objects failed to install:') | default(-1) }}"
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: Display content failed  onwards
+      debug:
+        msg: "{{ failed_components.stdout_lines[start_index | int:] }}"
+      when: " 'windows' in group_names and inventory_hostname != source_host "
+
+
+

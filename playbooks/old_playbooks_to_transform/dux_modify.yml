@@ -1,0 +1,23 @@
+---
+- name: "SEE MODIFICATED DATE"
+  hosts: all
+  gather_facts: False
+  become: False
+  
+  vars_files:
+    - ./external_vars.yml
+  
+  tasks:
+ 
+    - name: " See Last modifated date file"
+      shell: | 
+        cd '/opt/jenkins/workspace/STREAMSERVE-WINRM/STREAMSERVE-JOBS/MIGRATION-STREAMSERVE'
+        cat $(ls | grep "_Modify.csv")
+      when: ("linux" in group_names)
+      register: see_date_modificated
+          
+    - debug:
+        msg: "{{ see_date_modificated }}"  
+     
+
+...

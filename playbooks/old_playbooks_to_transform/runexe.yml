@@ -1,0 +1,33 @@
+---
+- name: "Run exe file into windows"
+  hosts: windows
+  become: True
+  gather_facts: False
+  become_method: runas
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+  
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: "print current directory work"
+      win_shell: |
+        chdir '{{ dir_windows }}'
+        echo $pwd
+      register: current_dir
+    - debug:
+        msg: "{{ current_dir.stdout_lines }}"
+      
+    - name: "Run exe"
+      win_shell: |
+        chdir '{{ dir_windows }}'
+        {{ dir_windows }}\file.ps1
+     
+       
+ 
+      
+       
+
+     

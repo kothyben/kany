@@ -1,0 +1,16 @@
+---
+- name: Find ZIP package on Windows
+  hosts: windows  # Replace 'windows_hosts' with the name of your target host or a group of Windows hosts in your inventory.
+
+  tasks:
+    - name: Find zip.exe and 7z.exe
+      win_find:
+        paths: 'C:\'  # Replace 'C:\' with the path where you want to start the search (e.g., 'C:\Program Files\', 'C:\Users\', etc.).
+        patterns:
+          - 'zip.exe'
+          - '7z.exe'
+      register: zip_executables
+
+    - name: Display search results
+      debug:
+        var: zip_executables.files

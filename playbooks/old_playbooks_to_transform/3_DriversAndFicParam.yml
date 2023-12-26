@@ -1,0 +1,71 @@
+---
+- name: CREATE DIRECTORIES DRIVERS + PARAMS FOR COPYING INTO DESTINATION WINDOWS MACHINE
+  hosts: all
+  gather_facts: False
+  become: True
+  become_method: runas
+
+  vars:
+    ansible_become_user: '{{ ansible_user }}'
+    ansible_become_pass: '{{ ansible_password }}'
+
+  vars_files:
+    - ./external_vars.yml
+
+  tasks:
+    - name: CREATE  DRIVERS DIRECTORY ON WINDOWS DESTINATION NODES  IF NOT EXISTS
+      win_file:
+        path: "{{ item }}"
+        state: directory
+      when: "'windows' in group_names   and inventory_hostname != source_host "
+      loop: 
+        - "{{ str_drivers_paths }}"
+        - "{{ str_path_fic_param }}"
+
+    - name: DELETE OLD COPIES INTO TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: COPY EXE FILE FROM LOCAL TO WINDOWS SOURCE
+      win_copy:
+        src: "../Executabe_Files/{{ item }}"
+        dest: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+      loop:
+        - config_files_pimp.exe
+
+    - name: RUN EXE FILE FOR COPYING DRIVERS FOLDERS add-printers INTO SOURCE HOST 
+      win_command: ".\\config_files_pimp.exe {{ str_drivers_paths }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+    
+    - name: TRANSFERT DRIVERS FOLDERS  FROM SOURCE HOST TO TEMP FOLDER INTO  DESTINATION HOSTS
+      include_tasks: robocopy_drivers.yml
+      ignore_errors: True
+      when: "'windows' in group_names and inventory_hostname != source_host"
+
+    - name: DELETE OLD COPIES INTO TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host " 
+
+    - name: RUN EXE FILE TO COPY FIC_PARAM INTO SOURCE HOSTS
+      win_command: ".\\config_files_pimp.exe {{ str_path_fic_param }}"
+      args:
+        chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host "
+
+    - name: TRANSFERT FILES IN FIC_PARAM FROM SOURCE HOST TO DESTINATION HOSTS
+      include_tasks: robocopy_fic_param.yml
+      ignore_errors: True
+      when: "'windows' in group_names and inventory_hostname != source_host "
+
+    - name: DELETE EXE FILE
+      win_shell: "Remove-Item -Path config_files_pimp.exe"
+      args:
+            chdir: "{{ destination_directory }}"
+      when: "'windows' in group_names and inventory_hostname == source_host"
+    
+    - name: DELETE CONTAINS OF  TEMP FOLDER FROM SOURCE HOST
+      win_shell: Remove-Item -Path "{{ destination_directory }}temp_folder\\*" -Recurse -ErrorAction SilentlyContinue
+      when: "'windows' in group_names and inventory_hostname == source_host " 
